@@ -1,0 +1,16 @@
+#pragma once
+
+enum class MCDUButton {
+    L1, L2, L3, L4, L5, L6,
+    R1, R2, R3, R4, R5, R6,
+    CLR, DEL, ENT, MENU,
+    PREV_PAGE, NEXT_PAGE,
+    DIR, PROG, PERF, INIT, DATA,
+    FPLN, RAD_NAV, FUEL_PRED, SEC_F_PLN, ATC_COMM, MCDU_MENU,
+    AIRPORT,
+    SCROLL_LEFT, SCROLL_UP, SCROLL_RIGHT, SCROLL_DOWN,
+    NUM_1, NUM_2, NUM_3,
+    NUM_4, NUM_5, NUM_6,
+    NUM_7, NUM_8, NUM_9,
+    NUM_DOT, NUM_0, NUM_SIGN
+};
