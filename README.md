@@ -1,6 +1,13 @@
 # OPEN MCDU
 
-An open-source A320 MCDU (Multipurpose Control and Display Unit) simulator. Built in C++20, uses SFML 3 for rendering. The MCDU follows the ARINC 14x24 character grid standard used in real Airbus aircraft.
+An open-source A320 MCDU (Multifunction Control and Display Unit) simulator. Built in C++20, uses SFML 3 for rendering. The MCDU follows the ARINC 14x24 character grid standard used in real Airbus aircraft.
+
+<div align="center">
+  <img src="Gallery/4.png" width="400">
+  <img src="Gallery/3.png" width="400">
+  <img src="Gallery/2.png" width="400">
+  <img src="Gallery/1.png" width="400">
+</div>
 
 ## Features
 
@@ -158,4 +165,4 @@ The CMakeLists.txt uses GLOB_RECURSE so new files in src/ are picked up automati
 
 ## License
 
-GNU General Public License v2. See LICENSE.
+MIT License. See LICENSE.
