@@ -64,72 +64,65 @@ public:
     }
 
     void buildScreen(ScreenBuffer& buf) override {
-        buf.setString(0, 10, "INIT", CellColor::WHITE);
+        FieldRenderer::text(buf, 0, 10, "INIT", CellColor::WHITE);
 
-        // L1 / R1: simple transfer — no pending overlay, keep showing current value
-        FieldRenderer::render(buf, Field::LABEL_SMALL, 1, 1,  0, 0, "CO RTE",  CellColor::WHITE);
-        FieldRenderer::render(buf, Field::LABEL_SMALL, 1, 15, 0, 0, "FROM/TO", CellColor::WHITE);
-        FieldRenderer::render(buf, Field::BOX, 2, 0, 10, 0, m_disp.coRoute, CellColor::CYAN);
-        FieldRenderer::render(buf, Field::SLASH, 2, 15, 4, 4,
-            m_disp.fromAirport, CellColor::CYAN, m_disp.toAirport);
+        // L1 / R1
+        FieldRenderer::text(buf, 1, 1,  "CO RTE",  CellColor::WHITE, 14);
+        FieldRenderer::text(buf, 1, 15, "FROM/TO", CellColor::WHITE, 14);
+        FieldRenderer::box(buf, 2, 0, 10, m_disp.coRoute, CellColor::CYAN);
+        FieldRenderer::slash(buf, 2, 15, 4, 4,
+            m_disp.fromAirport, m_disp.toAirport, CellColor::CYAN);
 
-        // L2 / R2
-        FieldRenderer::render(buf, Field::LABEL_SMALL, 3, 0, 0, 0, "ALTN/CO RTE", CellColor::WHITE);
+        // L2 / R2 — ALTN/CO RTE (custom dashes with independent colors)
+        FieldRenderer::text(buf, 3, 0, "ALTN/CO RTE", CellColor::WHITE, 14);
         {
             CellColor lc = m_disp.altnCoRteLeft.empty() ? CellColor::WHITE : CellColor::CYAN;
             CellColor rc = m_disp.altnCoRteRight.empty() ? CellColor::WHITE : CellColor::CYAN;
             CellColor sc = (lc == CellColor::CYAN || rc == CellColor::CYAN) ? CellColor::CYAN : CellColor::WHITE;
             if (m_disp.altnCoRteLeft.empty())
-                for (int i = 0; i < 4; i++) buf.setCell(4, i, '-', lc);
-            else {
-                std::string s = m_disp.altnCoRteLeft.substr(0, 4);
-                s.resize(4, ' ');
-                buf.setString(4, 0, s, lc);
-            }
-            buf.setCell(4, 4, '/', sc);
+                FieldRenderer::dashLine(buf, 4, 0, 4, lc);
+            else
+                FieldRenderer::text(buf, 4, 0, padRight(m_disp.altnCoRteLeft, 4), lc);
+            FieldRenderer::character(buf, 4, 4, '/', sc);
             if (m_disp.altnCoRteRight.empty())
-                buf.setString(4, 5, std::string(10, '-'), rc);
-            else {
-                std::string s = m_disp.altnCoRteRight.substr(0, 10);
-                s.resize(10, ' ');
-                buf.setString(4, 5, s, rc);
-            }
+                FieldRenderer::dashLine(buf, 4, 5, 10, rc);
+            else
+                FieldRenderer::text(buf, 4, 5, padRight(m_disp.altnCoRteRight, 10), rc);
         }
 
         // L3 / R3
-        FieldRenderer::render(buf, Field::LABEL_SMALL, 5, 0, 0, 0, "FLT NBR",  CellColor::WHITE);
-        buf.setString(6, 15, "IRS INIT>", CellColor::AMBER);
-        FieldRenderer::render(buf, Field::BOX, 6, 0, 7, 0, m_disp.fltNbr, CellColor::CYAN);
+        FieldRenderer::text(buf, 5, 0,  "FLT NBR",  CellColor::WHITE, 14);
+        FieldRenderer::text(buf, 6, 15, "IRS INIT>", CellColor::AMBER);
+        FieldRenderer::box(buf, 6, 0, 7, m_disp.fltNbr, CellColor::CYAN);
 
         // L4 / R4
-        buf.setString(8, 14, "WIND/TEMP>", CellColor::WHITE);
+        FieldRenderer::text(buf, 8, 14, "WIND/TEMP>", CellColor::WHITE);
 
-        // L5 / R5: COST INDEX (simple transfer), TROPO (simple transfer)
-        FieldRenderer::render(buf, Field::LABEL_SMALL, 9, 0,  0, 0, "COST INDEX", CellColor::WHITE);
-        FieldRenderer::render(buf, Field::LABEL_SMALL, 9, 19, 0, 0, "TROPO",      CellColor::WHITE);
-        FieldRenderer::render(buf, Field::BOX, 10, 0, 3, 0, m_disp.costIndex, CellColor::CYAN);
-        FieldRenderer::render(buf, Field::BOX, 10, 19, 5, 0,
-            m_disp.tropo, CellColor::CYAN, "", Align::RIGHT, CellColor::CYAN);
+        // L5 / R5
+        FieldRenderer::text(buf, 9, 0,  "COST INDEX", CellColor::WHITE, 14);
+        FieldRenderer::text(buf, 9, 19, "TROPO",      CellColor::WHITE, 14);
+        FieldRenderer::box(buf, 10, 0,  3, m_disp.costIndex, CellColor::CYAN);
+        FieldRenderer::box(buf, 10, 19, 5, m_disp.tropo, CellColor::CYAN,
+            CellColor::CYAN, Align::RIGHT);
 
-        // L6 / R6: CRZ FL/TEMP (COMPUTED — shows ---- while FMGC calculates),
-        //          GND TEMP (simple transfer)
-        FieldRenderer::render(buf, Field::LABEL_SMALL, 11, 0,  0, 0, "CRZ FL/TEMP", CellColor::WHITE);
-        FieldRenderer::render(buf, Field::LABEL_SMALL, 11, 16, 0, 0, "GND TEMP",    CellColor::WHITE);
+        // L6 / R6
+        FieldRenderer::text(buf, 11, 0,  "CRZ FL/TEMP", CellColor::WHITE, 14);
+        FieldRenderer::text(buf, 11, 16, "GND TEMP",    CellColor::WHITE, 14);
 
-        // CRZ FL/TEMP — FMGC computes ISA temperature, show ---- while computing
+        // CRZ FL/TEMP — computed, shows ---- while FMGC calculates
         {
             CellColor cc = m_disp.crzFlTempPending ? CellColor::AMBER :
                 (m_disp.crzFlTemp.empty() ? CellColor::AMBER : CellColor::CYAN);
             std::string crz = m_disp.crzFlTempPending ? "----/----" :
                 (m_disp.crzFlTemp.empty() ? "-----/---" : m_disp.crzFlTemp);
-            buf.setString(12, 0, crz + DEG, cc);
+            FieldRenderer::text(buf, 12, 0, crz + DEG, cc);
         }
 
-        // GND TEMP — simple transfer, no pending overlay
+        // GND TEMP — simple transfer
         {
             CellColor gc = m_disp.gndTemp.empty() ? CellColor::WHITE : CellColor::CYAN;
             std::string gnd = m_disp.gndTemp.empty() ? "---" : m_disp.gndTemp;
-            buf.setString(12, 20, padLeft(gnd + DEG, 4), gc, 14);
+            FieldRenderer::text(buf, 12, 20, padLeft(gnd + DEG, 4), gc, 14);
         }
     }
 
@@ -152,8 +145,16 @@ private:
     ClickHandler m_chIrsInit;
     ClickHandler m_chWindTemp;
 
+    // Right-align: pads spaces on the left
     static std::string padLeft(const std::string& s, int w) {
         if (static_cast<int>(s.size()) >= w) return s.substr(0, static_cast<size_t>(w));
         return std::string(static_cast<size_t>(w - s.size()), ' ') + s;
+    }
+    // Left-align: pads spaces on the right
+    static std::string padRight(const std::string& s, int w) {
+        if (static_cast<int>(s.size()) >= w) return s.substr(0, static_cast<size_t>(w));
+        std::string r = s;
+        r.resize(static_cast<size_t>(w), ' ');
+        return r;
     }
 };

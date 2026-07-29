@@ -12,14 +12,12 @@ public:
     }
 
     void buildScreen(ScreenBuffer& buf) override {
-        buf.setString(0, 8, "MCDU MENU", CellColor::WHITE);
-
-        buf.setString(2, 0, "<FMGC (REQ)", CellColor::GREEN);
-        buf.setString(4, 0, "<ATSU",       CellColor::WHITE);
-        buf.setString(6, 0, "<AIDS",       CellColor::WHITE);
-        buf.setString(8, 0, "<CFDS",       CellColor::WHITE);
-
-        buf.setString(1, 15, "SELECT",     CellColor::WHITE, 14);
-        buf.setString(2, 15, "NAV B/UP>",  CellColor::WHITE);
+        FieldRenderer::text(buf, 0, 8, "MCDU MENU",  CellColor::WHITE);
+        FieldRenderer::text(buf, 2, 0, "<FMGC (REQ)", CellColor::GREEN);
+        FieldRenderer::text(buf, 4, 0, "<ATSU",       CellColor::WHITE);
+        FieldRenderer::text(buf, 6, 0, "<AIDS",       CellColor::WHITE);
+        FieldRenderer::text(buf, 8, 0, "<CFDS",       CellColor::WHITE);
+        FieldRenderer::text(buf, 1, 15, "SELECT",     CellColor::WHITE, 14);
+        FieldRenderer::text(buf, 2, 15, "NAV B/UP>",  CellColor::WHITE);
     }
 };

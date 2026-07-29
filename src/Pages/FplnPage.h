@@ -69,16 +69,16 @@ public:
         bool editing = m_plan.isEditing();
 
         // Row 0: flight number + arrows
-        buf.setCell(0, 22, 0x2190, CellColor::WHITE, 14);
-        buf.setCell(0, 23, 0x2192, CellColor::WHITE, 14);
+        FieldRenderer::character(buf, 0, 22, 0x2190, CellColor::WHITE, 14);
+        FieldRenderer::character(buf, 0, 23, 0x2192, CellColor::WHITE, 14);
 
         size_t total = editing ? m_plan.editSize() : m_plan.size();
         if (total == 0) return;
 
         // Row 1: headers
-        buf.setString(1, 1,  "FROM",   CellColor::WHITE, 14);
-        buf.setString(1, 9,  "TIME",   CellColor::WHITE, 14);
-        buf.setString(1, 15, "SPD/ALT", CellColor::WHITE, 14);
+        FieldRenderer::text(buf, 1, 1,  "FROM",    CellColor::WHITE, 14);
+        FieldRenderer::text(buf, 1, 9,  "TIME",    CellColor::WHITE, 14);
+        FieldRenderer::text(buf, 1, 15, "SPD/ALT", CellColor::WHITE, 14);
 
         // Render visible items at slots 0..4
         if (total < 5) {
@@ -95,21 +95,21 @@ public:
 
         // Rows 11-12: DEST or TMPY/ERASE/INSERT
         if (editing) {
-            buf.setString(11, 1,  "TMPY",   CellColor::AMBER, 14);
-            buf.setString(11, 18, "TMPY",   CellColor::AMBER, 14);
-            buf.setCell(12, 0,  0x2190, CellColor::AMBER);
-            buf.setString(12, 1,  "ERASE",  CellColor::AMBER);
-            buf.setString(12, 17, "INSERT*", CellColor::AMBER);
+            FieldRenderer::text(buf, 11, 1,  "TMPY",    CellColor::AMBER, 14);
+            FieldRenderer::text(buf, 11, 18, "TMPY",    CellColor::AMBER, 14);
+            FieldRenderer::character(buf, 12, 0,  0x2190, CellColor::AMBER);
+            FieldRenderer::text(buf, 12, 1,  "ERASE",   CellColor::AMBER);
+            FieldRenderer::text(buf, 12, 17, "INSERT*", CellColor::AMBER);
         } else {
-            buf.setString(11, 1,  "DEST", CellColor::WHITE, 14);
-            buf.setString(11, 9,  "TIME", CellColor::WHITE, 14);
-            buf.setString(11, 15, "DIST", CellColor::WHITE, 14);
-            buf.setString(11, 20, "EFOB", CellColor::WHITE, 14);
+            FieldRenderer::text(buf, 11, 1,  "DEST",     CellColor::WHITE, 14);
+            FieldRenderer::text(buf, 11, 9,  "TIME",     CellColor::WHITE, 14);
+            FieldRenderer::text(buf, 11, 15, "DIST",     CellColor::WHITE, 14);
+            FieldRenderer::text(buf, 11, 20, "EFOB",     CellColor::WHITE, 14);
             const FlightWaypoint* dest = findDestination();
             if (dest) {
-                buf.setString(12, 1,  dest->id, CellColor::GREEN);
-                buf.setString(12, 9,  "----",     CellColor::GREEN);
-                buf.setString(12, 15, "---/----",  CellColor::GREEN);
+                FieldRenderer::text(buf, 12, 1,  dest->id, CellColor::GREEN);
+                FieldRenderer::text(buf, 12, 9,  "----",    CellColor::GREEN);
+                FieldRenderer::text(buf, 12, 15, "---/----", CellColor::GREEN);
             }
         }
     }
@@ -120,7 +120,8 @@ public:
         size_t total = m_plan.isEditing() ? m_plan.editSize() : m_plan.size();
         if (total == 0) return false;
         size_t modBase = (total < 5) ? 5 : total;
-        int offset = static_cast<int>(m_scrollOffset) + delta;
+        // Negate delta: UP arrow (-delta) shows earlier items, DOWN (+delta) shows later
+        int offset = static_cast<int>(m_scrollOffset) - delta;
         offset %= static_cast<int>(modBase);
         if (offset < 0) offset += static_cast<int>(modBase);
         m_scrollOffset = static_cast<size_t>(offset);
@@ -167,13 +168,13 @@ private:
         CellColor dataCol   = editing ? CellColor::YELLOW : CellColor::GREEN;
 
         if (wpt->isEndOfPlan) {
-            buf.setString(dataRow, 0, "------END OF F-PLN------", normalCol);
+            FieldRenderer::text(buf, dataRow, 0, "------END OF F-PLN------", normalCol);
         } else if (wpt->isDiscontinuity) {
-            buf.setString(dataRow, 0, "---F-PLN DISCONTINUITY---", normalCol);
+            FieldRenderer::text(buf, dataRow, 0, "---F-PLN DISCONTINUITY---", normalCol);
         } else {
-            buf.setString(dataRow, 1,  wpt->id,    dataCol);
-            buf.setString(dataRow, 9,  "----",     dataCol);
-            buf.setString(dataRow, 15, "---/----",  dataCol);
+            FieldRenderer::text(buf, dataRow, 1,  wpt->id,   dataCol);
+            FieldRenderer::text(buf, dataRow, 9,  "----",    dataCol);
+            FieldRenderer::text(buf, dataRow, 15, "---/----", dataCol);
         }
     }
 

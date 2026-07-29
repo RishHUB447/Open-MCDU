@@ -7,123 +7,107 @@
 #define DEG "\xB0"
 #endif
 
-struct Field {
-    enum Type {
-        BOX,
-        BOX_SMALL,
-        LABEL,
-        LABEL_SMALL,
-        SLASH,      // left/right pair with /
-        SEPARATOR
-    } type;
-
-    int row, col;
-    int width;
-    int widthRight;
-    std::string label;
-};
-
 enum class Align { LEFT, RIGHT };
 
-// Draws fields onto a ScreenBuffer.
+// Clean field-drawing API. Each function does one thing with explicit parameters.
 class FieldRenderer {
 public:
-    static void render(ScreenBuffer& buf, Field::Type type,
-                       int row, int col, int width, int widthRight,
-                       const std::string& leftContent,
-                       CellColor filledColor = CellColor::GREEN,
-                       const std::string& rightContent = "",
-                       Align align = Align::LEFT,
-                       CellColor emptyColor = CellColor::AMBER)
+    // Plain text at (row, col). Font size is explicit — no more LABEL_SMALL mystery.
+    static void text(ScreenBuffer& buf, int row, int col,
+                     const std::string& text, CellColor color, uint8_t fontSize = 22)
     {
-        bool isSmall = (type == Field::BOX_SMALL || type == Field::LABEL_SMALL);
-        uint8_t fontSize = isSmall ? 14 : 22;
+        buf.setString(row, col, text, color, fontSize);
+    }
 
-        switch (type) {
-            case Field::BOX:
-            case Field::BOX_SMALL:
-                renderTextField(buf, row, col, width, leftContent, filledColor, align, fontSize, emptyColor);
-                break;
-            case Field::SLASH:
-                renderSlashField(buf, row, col, width, widthRight, leftContent, rightContent, filledColor, align, fontSize, emptyColor);
-                break;
-            case Field::LABEL:
-            case Field::LABEL_SMALL:
-                buf.setString(row, col, leftContent, filledColor, fontSize);
-                break;
-            case Field::SEPARATOR: {
-                int n = width > 0 ? width : 0;
-                buf.setString(row, col, std::string(static_cast<size_t>(n), '-'), CellColor::DIM, fontSize);
-                break;
-            }
+    // Box field: empty shows ▯▯▯, filled shows content with alignment.
+    static void box(ScreenBuffer& buf, int row, int col, int width,
+                    const std::string& content,
+                    CellColor filledColor = CellColor::GREEN,
+                    CellColor emptyColor = CellColor::AMBER,
+                    Align align = Align::LEFT,
+                    uint8_t fontSize = 22)
+    {
+        if (width <= 0) return;
+        if (content.empty()) {
+            fillBoxes(buf, row, col, width, emptyColor, fontSize);
+        } else {
+            std::string s = content.substr(0, static_cast<size_t>(width));
+            if (align == Align::LEFT)
+                s.resize(static_cast<size_t>(width), ' ');
+            else
+                s = std::string(static_cast<size_t>(width - static_cast<int>(s.size())), ' ') + s;
+            buf.setString(row, col, s, filledColor, fontSize);
         }
+    }
+
+    // Slash field: left-box / right-box (e.g. FROM/TO, ALTN)
+    static void slash(ScreenBuffer& buf, int row, int col, int leftW, int rightW,
+                      const std::string& leftContent, const std::string& rightContent,
+                      CellColor filledColor = CellColor::GREEN,
+                      CellColor emptyColor = CellColor::AMBER,
+                      uint8_t fontSize = 22)
+    {
+        bool hasData = !leftContent.empty() || !rightContent.empty();
+        CellColor color = hasData ? filledColor : emptyColor;
+
+        if (leftContent.empty())
+            fillBoxes(buf, row, col, leftW, color, fontSize);
+        else
+            buf.setString(row, col, pad(leftContent, leftW), color, fontSize);
+
+        buf.setCell(row, col + leftW, '/', color, fontSize);
+
+        if (rightContent.empty())
+            fillBoxes(buf, row, col + leftW + 1, rightW, color, fontSize);
+        else
+            buf.setString(row, col + leftW + 1, pad(rightContent, rightW, true), color, fontSize);
+    }
+
+    // Single character at (row, col) — arrows, degree, box markers, etc.
+    static void character(ScreenBuffer& buf, int row, int col, uint32_t codepoint,
+                          CellColor color, uint8_t fontSize = 22)
+    {
+        buf.setCell(row, col, codepoint, color, fontSize);
+    }
+
+    // Row of dashes
+    static void separator(ScreenBuffer& buf, int row, int col, int width,
+                          uint8_t fontSize = 22)
+    {
+        if (width > 0)
+            buf.setString(row, col, std::string(static_cast<size_t>(width), '-'),
+                          CellColor::DIM, fontSize);
+    }
+
+    // Row of dashes with custom color (for fields that want dashes instead of boxes)
+    static void dashLine(ScreenBuffer& buf, int row, int col, int width,
+                         CellColor color, uint8_t fontSize = 22)
+    {
+        if (width > 0)
+            buf.setString(row, col, std::string(static_cast<size_t>(width), '-'),
+                          color, fontSize);
     }
 
 private:
     static void fillBoxes(ScreenBuffer& buf, int row, int col, int w,
-                          CellColor color, uint8_t fontSize = 22)
+                          CellColor color, uint8_t fontSize)
     {
         for (int i = 0; i < w; i++)
             buf.setCell(row, col + i, BOX_MARKER, color, fontSize);
     }
 
-    static void renderTextField(ScreenBuffer& buf, int row, int col, int w,
-                                const std::string& content, CellColor filledColor,
-                                Align align, uint8_t fontSize = 22,
-                                CellColor emptyColor = CellColor::AMBER)
-    {
-        if (w <= 0) return;
-        if (content.empty()) {
-            fillBoxes(buf, row, col, w, emptyColor, fontSize);
-        } else {
-            std::string trimmed = content.substr(0, static_cast<size_t>(w));
-            if (align == Align::LEFT) {
-                trimmed.resize(static_cast<size_t>(w), ' ');
-            } else {
-                int pad = w - static_cast<int>(trimmed.size());
-                if (pad > 0)
-                    trimmed = std::string(static_cast<size_t>(pad), ' ') + trimmed;
-            }
-            buf.setString(row, col, trimmed, filledColor, fontSize);
-        }
-    }
-
-    static void renderSlashField(ScreenBuffer& buf, int row, int col,
-                                 int leftW, int rightW,
-                                 const std::string& left, const std::string& right,
-                                 CellColor filledColor, Align align,
-                                 uint8_t fontSize = 22,
-                                 CellColor emptyColor = CellColor::AMBER)
-    {
-        bool hasData = !left.empty() || !right.empty();
-        CellColor color = hasData ? filledColor : emptyColor;
-
-        if (left.empty()) {
-            fillBoxes(buf, row, col, leftW, color, fontSize);
-        } else {
-            std::string s = left.substr(0, static_cast<size_t>(leftW));
-            s.resize(static_cast<size_t>(leftW), ' ');
-            buf.setString(row, col, s, color, fontSize);
-        }
-
-        buf.setCell(row, col + leftW, '/', color, fontSize);
-
-        if (right.empty()) {
-            fillBoxes(buf, row, col + leftW + 1, rightW, color, fontSize);
-        } else {
-            std::string s = right.substr(0, static_cast<size_t>(rightW));
-            int pad = rightW - static_cast<int>(s.size());
-            if (pad > 0)
-                s = std::string(static_cast<size_t>(pad), ' ') + s;
-            buf.setString(row, col + leftW + 1, s, color, fontSize);
-        }
+    static std::string pad(const std::string& s, int w, bool right = false) {
+        if (static_cast<int>(s.size()) >= w)
+            return s.substr(0, static_cast<size_t>(w));
+        std::string r = s;
+        if (right)
+            return std::string(static_cast<size_t>(w - s.size()), ' ') + r;
+        r.resize(static_cast<size_t>(w), ' ');
+        return r;
     }
 };
 
 // Describes what happens when a bezel-side button is pressed next to this field.
-// busLabel = ARINC label to send on the bus (0 = no bus action)
-// isDirectAction = true -> scratchpad not consumed, just send label as-is
-// valuePtr = pointer to read-back value for scratchpad (may point to temp storage)
 struct ClickHandler {
     uint16_t     busLabel = 0;
     bool         isDirectAction = false;

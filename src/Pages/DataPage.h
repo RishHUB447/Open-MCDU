@@ -40,11 +40,11 @@ public:
     bool needsScrollIndicators() const override { return false; }
 
     void buildScreen(ScreenBuffer& buf) override {
-        FieldRenderer::render(buf, Field::LABEL, 0, 7,  0, 0, "DATA INDEX", CellColor::WHITE);
+        FieldRenderer::text(buf, 0, 7,  "DATA INDEX", CellColor::WHITE);
         std::string pageNo = (m_subPage == 0) ? "1/2" : "2/2";
-        FieldRenderer::render(buf, Field::LABEL, 0, 19, 0, 0, pageNo, CellColor::WHITE);
-        buf.setCell(0, 22, 0x2190, CellColor::WHITE, 14);
-        buf.setCell(0, 23, 0x2192, CellColor::WHITE, 14);
+        FieldRenderer::text(buf, 0, 19, pageNo, CellColor::WHITE);
+        FieldRenderer::character(buf, 0, 22, 0x2190, CellColor::WHITE, 14);
+        FieldRenderer::character(buf, 0, 23, 0x2192, CellColor::WHITE, 14);
 
         if (m_subPage == 0)
             buildPage1(buf);
@@ -57,30 +57,28 @@ private:
     ClickHandler m_chAcStatus{0, false, nullptr, "AC_STATUS"};
 
     void buildPage1(ScreenBuffer& buf) {
-        FieldRenderer::render(buf, Field::LABEL_SMALL, 1,  0, 0, 0, "POSITION",    CellColor::WHITE);
-        FieldRenderer::render(buf, Field::LABEL,      2,  0, 0, 0, "<MONITOR",     CellColor::WHITE);
+        FieldRenderer::text(buf, 1,  0, "POSITION",    CellColor::WHITE, 14);
+        FieldRenderer::text(buf, 2,  0, "<MONITOR",     CellColor::WHITE);
 
-        FieldRenderer::render(buf, Field::LABEL_SMALL, 3,  0, 0, 0, "IRS",         CellColor::WHITE);
-        FieldRenderer::render(buf, Field::LABEL,      4,  0, 0, 0, "<MONITOR",     CellColor::WHITE);
+        FieldRenderer::text(buf, 3,  0, "IRS",         CellColor::WHITE, 14);
+        FieldRenderer::text(buf, 4,  0, "<MONITOR",     CellColor::WHITE);
 
-        FieldRenderer::render(buf, Field::LABEL_SMALL, 5,  0, 0, 0, "GPS",         CellColor::WHITE);
-        FieldRenderer::render(buf, Field::LABEL,      6,  0, 0, 0, "<MONITOR",     CellColor::WHITE);
+        FieldRenderer::text(buf, 5,  0, "GPS",         CellColor::WHITE, 14);
+        FieldRenderer::text(buf, 6,  0, "<MONITOR",     CellColor::WHITE);
 
-        // LSK4: A/C STATUS
-        FieldRenderer::render(buf, Field::LABEL_SMALL, 7,  0, 0, 0, "A/C STATUS", CellColor::WHITE);
-        FieldRenderer::render(buf, Field::LABEL,      8,  0, 0, 0, "<A/C STATUS", CellColor::WHITE);
+        FieldRenderer::text(buf, 8,  0, "<A/C STATUS", CellColor::WHITE);
 
-        FieldRenderer::render(buf, Field::LABEL_SMALL, 7, 13, 0, 0, "ACARS/PRINT", CellColor::WHITE);
-        FieldRenderer::render(buf, Field::LABEL,      8, 15, 0, 0, "FUNCTION>",   CellColor::WHITE);
+        FieldRenderer::text(buf, 7, 13, "ACARS/PRINT", CellColor::WHITE, 14);
+        FieldRenderer::text(buf, 8, 15, "FUNCTION>",   CellColor::WHITE);
 
-        FieldRenderer::render(buf, Field::LABEL_SMALL, 9,  0, 0, 0, "CLOSEST",     CellColor::WHITE);
-        FieldRenderer::render(buf, Field::LABEL,     10,  0, 0, 0, "AIRPORTS",    CellColor::WHITE);
+        FieldRenderer::text(buf, 9,  0, "CLOSEST",     CellColor::WHITE, 14);
+        FieldRenderer::text(buf, 10, 0, "AIRPORTS",    CellColor::WHITE);
 
-        FieldRenderer::render(buf, Field::LABEL_SMALL, 11, 0, 0, 0, "EQUIP",       CellColor::WHITE);
-        FieldRenderer::render(buf, Field::LABEL,      12, 0, 0, 0, "POINT",       CellColor::WHITE);
+        FieldRenderer::text(buf, 11, 0, "EQUIP",       CellColor::WHITE, 14);
+        FieldRenderer::text(buf, 12, 0, "POINT",       CellColor::WHITE);
     }
 
     void buildPage2(ScreenBuffer& buf) {
-        FieldRenderer::render(buf, Field::LABEL, 6, 9, 0, 0, "PAGE 2", CellColor::WHITE);
+        FieldRenderer::text(buf, 6, 9, "PAGE 2", CellColor::WHITE);
     }
 };

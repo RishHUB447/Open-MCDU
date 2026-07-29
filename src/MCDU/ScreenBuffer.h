@@ -48,10 +48,39 @@ public:
         return m_cells[row][col].fontSize;
     }
 
+    // Write a string, decoding UTF-8 multi-byte sequences into single codepoints.
+    // This lets you use chars like \u2190 ("←") directly in string literals.
     void setString(int row, int col, const std::string& str,
                    CellColor color = CellColor::GREEN, uint8_t fontSize = 22) {
-        for (size_t i = 0; i < str.size() && col + static_cast<int>(i) < COLS; i++)
-            setCell(row, col + static_cast<int>(i), static_cast<uint8_t>(str[i]), color, fontSize);
+        size_t ci = static_cast<size_t>(col);
+        size_t i = 0;
+        while (i < str.size() && ci < COLS) {
+            uint32_t cp;
+            unsigned char b = static_cast<unsigned char>(str[i]);
+            if (b < 0x80) {
+                cp = b; i += 1;
+            } else if ((b & 0xE0) == 0xC0 && i + 1 < str.size()) {
+                cp = (static_cast<uint32_t>(b & 0x1F) << 6)
+                   | static_cast<uint32_t>(str[i+1] & 0x3F);
+                i += 2;
+            } else if ((b & 0xF0) == 0xE0 && i + 2 < str.size()) {
+                cp = (static_cast<uint32_t>(b & 0x0F) << 12)
+                   | (static_cast<uint32_t>(str[i+1] & 0x3F) << 6)
+                   | static_cast<uint32_t>(str[i+2] & 0x3F);
+                i += 3;
+            } else if ((b & 0xF8) == 0xF0 && i + 3 < str.size()) {
+                cp = (static_cast<uint32_t>(b & 0x07) << 18)
+                   | (static_cast<uint32_t>(str[i+1] & 0x3F) << 12)
+                   | (static_cast<uint32_t>(str[i+2] & 0x3F) << 6)
+                   | static_cast<uint32_t>(str[i+3] & 0x3F);
+                i += 4;
+            } else {
+                i += 1;  // invalid leading byte, skip
+                continue;
+            }
+            setCell(row, static_cast<int>(ci), cp, color, fontSize);
+            ci++;
+        }
     }
 
     void clearRow(int row) {
