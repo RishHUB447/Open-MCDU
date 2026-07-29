@@ -4,10 +4,15 @@
 #include <future>
 #include "MCDU/BezelLayout.h"
 #include "Core/FMGC.h"
+#include "Core/DataBus.h"
 #include "MCDU/MCDU.h"
 
 int main() {
-    FMGC fmgc;
+    // Shared data bus (thread-safe, two unidirectional buses)
+    DataBus bus;
+    bus.setLatencyMs(30);  // simulate 30ms bus latency
+
+    FMGC fmgc(bus);
 
     // Load navigation data in parallel (X-Plane format)
     auto fixFuture = std::async(std::launch::async, [&]() {
@@ -20,7 +25,7 @@ int main() {
         return fmgc.loadAirportsCSV("ext_data/airports.csv");
     });
 
-    MCDU mcdu(fmgc);
+    MCDU mcdu(fmgc, bus);
     mcdu.rebuildScreen();
 
     int fixCount = fixFuture.get();
@@ -28,6 +33,8 @@ int main() {
     int aptCount = aptFuture.get();
     std::cout << "NavDatabase: " << fixCount << " fixes, "
               << navCount << " navaids, " << aptCount << " airports loaded\n";
+
+    fmgc.start();  // 20 Hz FMGC thread
 
     sf::RenderWindow window(
         sf::VideoMode({static_cast<unsigned int>(BEZEL_W),
@@ -69,10 +76,18 @@ int main() {
             }
         }
 
+        // Tick bus and rebuild screen (FMGC thread handles processMessages)
+        uint64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+
+        mcdu.updateBus(now);        // tick bus — latches pending messages
+        mcdu.rebuildScreen();       // polls FMGC responses, builds screen
+
         window.clear(sf::Color::Black);
         mcdu.render(window);
         window.display();
     }
 
+    fmgc.stop();
     return 0;
 }

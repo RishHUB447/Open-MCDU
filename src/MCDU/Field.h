@@ -7,12 +7,6 @@
 #define DEG "\xB0"
 #endif
 
-static bool storeString(void* ctx, const std::string& input, std::string& err) {
-    (void)err;
-    *static_cast<std::string*>(ctx) = input;
-    return true;
-}
-
 struct Field {
     enum Type {
         BOX,
@@ -31,7 +25,7 @@ struct Field {
 
 enum class Align { LEFT, RIGHT };
 
-// Draws fields onto a ScreenBuffer... Pages call FieldRenderer::render() in buildScreen()
+// Draws fields onto a ScreenBuffer.
 class FieldRenderer {
 public:
     static void render(ScreenBuffer& buf, Field::Type type,
@@ -126,34 +120,20 @@ private:
     }
 };
 
-// Two string targets for SLASH fields (e.g. FROM/TO)
-struct SlashTarget {
-    std::string* left = nullptr;
-    std::string* right = nullptr;
-};
-
-// Click handler for a field next to a bezel-side button.
-// Pages return this via getClickHandler(side, lskIdx) — no slot array needed.
+// Describes what happens when a bezel-side button is pressed next to this field.
+// busLabel = ARINC label to send on the bus (0 = no bus action)
+// isDirectAction = true -> scratchpad not consumed, just send label as-is
+// valuePtr = pointer to read-back value for scratchpad (may point to temp storage)
 struct ClickHandler {
-    std::string* dataPtr = nullptr;
-    SlashTarget* slashTarget = nullptr;
+    uint16_t     busLabel = 0;
+    bool         isDirectAction = false;
+    std::string* valuePtr = nullptr;
 
-    bool (*onClick)(void* ctx, const std::string& input, std::string& err) = nullptr;
-    void* clickCtx = nullptr;
-    bool isDirectAction = false;
-
-    bool isEditable() const { return onClick != nullptr; }
-
-    std::string currentValue() const {
-        if (dataPtr) return *dataPtr;
-        if (slashTarget) return *slashTarget->left + "/" + *slashTarget->right;
-        return "";
-    }
+    bool isEditable() const { return busLabel != 0 || isDirectAction || valuePtr != nullptr; }
+    std::string currentValue() const { return valuePtr ? *valuePtr : ""; }
 };
 
 // Base class for MCDU pages.
-// buildScreen() renders to the ScreenBuffer.
-// getClickHandler() answers "what field is next to this button?" — no slots, no arrays.
 class Page {
 public:
     virtual ~Page() = default;

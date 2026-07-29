@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <cstddef>
+#include <mutex>
 #include "NavDatabase.h"
 
 /*
@@ -32,7 +33,7 @@ class FlightPlan {
 public:
     FlightPlan() = default;
 
-    ~FlightPlan() { clearActive(); clearEdit(); }
+    ~FlightPlan() { std::lock_guard<std::recursive_mutex> lk(m_mutex); clearActive(); clearEdit(); }
 
     FlightPlan(const FlightPlan&) = delete;
     FlightPlan& operator=(const FlightPlan&) = delete;
@@ -64,11 +65,12 @@ public:
     }
 
     // Active plan accessors
-    FlightWaypoint* first() const { return m_activeHead; }
-    FlightWaypoint* last()  const { return m_activeTail; }
-    size_t size() const { return m_activeSize; }
+    FlightWaypoint* first() const { std::lock_guard<std::recursive_mutex> lk(m_mutex); return m_activeHead; }
+    FlightWaypoint* last()  const { std::lock_guard<std::recursive_mutex> lk(m_mutex); return m_activeTail; }
+    size_t size() const { std::lock_guard<std::recursive_mutex> lk(m_mutex); return m_activeSize; }
 
     FlightWaypoint* at(size_t index) const {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         FlightWaypoint* cur = m_activeHead;
         for (size_t i = 0; cur && i < index; i++)
             cur = cur->next;
@@ -76,6 +78,7 @@ public:
     }
 
     std::vector<const FlightWaypoint*> toVector() const {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         std::vector<const FlightWaypoint*> result;
         result.reserve(m_activeSize);
         for (auto* cur = m_activeHead; cur; cur = cur->next)
@@ -85,6 +88,7 @@ public:
 
     // Active plan mutations
     bool appendFromDB(const std::string& id, const NavDatabase& db) {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         const WaypointRecord* rec = db.find(id);
         if (!rec) return false;
         return append(rec->id, rec->lat, rec->lon, rec->name);
@@ -92,6 +96,7 @@ public:
 
     bool append(const std::string& id, double lat = 0.0, double lon = 0.0,
                 const std::string& name = "") {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         auto* node = new FlightWaypoint;
         node->id = id;
         node->lat = lat;
@@ -102,6 +107,7 @@ public:
     }
 
     void insertDiscontinuity(FlightWaypoint* after = nullptr) {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         auto* node = new FlightWaypoint;
         node->id = "DISCONTINUITY";
         node->isDiscontinuity = true;
@@ -110,6 +116,7 @@ public:
     }
 
     FlightWaypoint* findDiscontinuity() {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         for (auto* cur = m_activeHead; cur; cur = cur->next)
             if (cur->isDiscontinuity) return cur;
         return nullptr;
@@ -118,6 +125,7 @@ public:
     FlightWaypoint* insertBefore(FlightWaypoint* before, const std::string& id,
                                   double lat = 0.0, double lon = 0.0,
                                   const std::string& name = "") {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         auto* node = new FlightWaypoint;
         node->id = id;
         node->lat = lat;
@@ -146,10 +154,12 @@ public:
 
     FlightWaypoint* prepend(const std::string& id, double lat = 0.0, double lon = 0.0,
                              const std::string& name = "") {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         return insertBefore(m_activeHead, id, lat, lon, name);
     }
 
     void appendEndOfPlan() {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         auto* node = new FlightWaypoint;
         node->id = "ENDOFFPLN";
         node->isEndOfPlan = true;
@@ -158,12 +168,14 @@ public:
     }
 
     void remove(FlightWaypoint* node) {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         if (!node) return;
         unlinkNode(node);
         delete node;
     }
 
     void clearActive() {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         FlightWaypoint* cur = m_activeHead;
         while (cur) {
             FlightWaypoint* nxt = cur->next;
@@ -174,9 +186,10 @@ public:
     }
 
     // EDIT mode
-    bool isEditing() const { return m_editing; }
+    bool isEditing() const { std::lock_guard<std::recursive_mutex> lk(m_mutex); return m_editing; }
 
     bool beginEdit() {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         if (m_editing) return false;
         m_editHead = deepCopyList(m_activeHead, m_activeTail, m_editSize);
         m_editing = true;
@@ -184,6 +197,7 @@ public:
     }
 
     void commitEdit() {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         if (!m_editing || !m_editHead) return;
         clearActive();
         m_activeHead = m_editHead; m_activeTail = m_editTail;
@@ -193,17 +207,19 @@ public:
     }
 
     void cancelEdit() {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         if (!m_editing) return;
         clearEdit();
         m_editing = false;
     }
 
     // Edit plan accessors
-    FlightWaypoint* editFirst() const { return m_editing ? m_editHead : nullptr; }
-    FlightWaypoint* editLast()  const { return m_editing ? m_editTail : nullptr; }
-    size_t editSize() const { return m_editing ? m_editSize : 0; }
+    FlightWaypoint* editFirst() const { std::lock_guard<std::recursive_mutex> lk(m_mutex); return m_editing ? m_editHead : nullptr; }
+    FlightWaypoint* editLast()  const { std::lock_guard<std::recursive_mutex> lk(m_mutex); return m_editing ? m_editTail : nullptr; }
+    size_t editSize() const { std::lock_guard<std::recursive_mutex> lk(m_mutex); return m_editing ? m_editSize : 0; }
 
     bool editAppendFromDB(const std::string& id, const NavDatabase& db) {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         if (!m_editing) return false;
         const WaypointRecord* rec = db.find(id);
         if (!rec) return false;
@@ -212,6 +228,7 @@ public:
 
     bool editAppendRaw(const std::string& id, double lat = 0.0, double lon = 0.0,
                        const std::string& name = "") {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         if (!m_editing) return false;
         auto* node = new FlightWaypoint;
         node->id = id;
@@ -229,6 +246,7 @@ public:
     }
 
     FlightWaypoint* editFindDiscontinuity() {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         if (!m_editing) return nullptr;
         for (auto* cur = m_editHead; cur; cur = cur->next)
             if (cur->isDiscontinuity) return cur;
@@ -238,6 +256,7 @@ public:
     FlightWaypoint* editInsertBefore(FlightWaypoint* before, const std::string& id,
                                       double lat = 0.0, double lon = 0.0,
                                       const std::string& name = "") {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         if (!m_editing) return nullptr;
         auto* node = new FlightWaypoint;
         node->id = id;
@@ -266,6 +285,7 @@ public:
     }
 
     std::vector<const FlightWaypoint*> editToVector() const {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         std::vector<const FlightWaypoint*> result;
         if (!m_editing) return result;
         result.reserve(m_editSize);
@@ -275,6 +295,7 @@ public:
     }
 
     void editRemove(FlightWaypoint* node) {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         if (!m_editing || !node) return;
         if (node->prev) node->prev->next = node->next;
         else m_editHead = node->next;
@@ -285,6 +306,7 @@ public:
     }
 
     void clearEdit() {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         FlightWaypoint* cur = m_editHead;
         while (cur) {
             FlightWaypoint* nxt = cur->next;
@@ -348,6 +370,7 @@ private:
         return newHead;
     }
 
+    mutable std::recursive_mutex m_mutex;
     FlightWaypoint* m_activeHead = nullptr;
     FlightWaypoint* m_activeTail = nullptr;
     size_t m_activeSize = 0;
