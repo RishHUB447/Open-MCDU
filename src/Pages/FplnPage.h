@@ -97,8 +97,8 @@ public:
         if (editing) {
             buf.setString(11, 1,  "TMPY",   CellColor::AMBER, 14);
             buf.setString(11, 18, "TMPY",   CellColor::AMBER, 14);
-            buf.setCell(12, 1,  0x2190, CellColor::AMBER);
-            buf.setString(12, 2,  "ERASE",  CellColor::AMBER);
+            buf.setCell(12, 0,  0x2190, CellColor::AMBER);
+            buf.setString(12, 1,  "ERASE",  CellColor::AMBER);
             buf.setString(12, 17, "INSERT*", CellColor::AMBER);
         } else {
             buf.setString(11, 1,  "DEST", CellColor::WHITE, 14);

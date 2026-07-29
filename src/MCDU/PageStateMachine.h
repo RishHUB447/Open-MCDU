@@ -92,8 +92,11 @@ public:
 
         if (side >= 0 && idx >= 0) {
             const ClickHandler* handler = m_current->getClickHandler(side, idx);
-            if (!handler || !handler->isEditable())
+            if (!handler || !handler->isEditable()) {
+                if (handler && !handler->navTarget.empty())
+                    switchTo(handler->navTarget);
                 return true;
+            }
 
             std::string spData = scratchpad.text();
 
@@ -102,6 +105,8 @@ public:
                 m_bus.sendToFmgc(handler->busLabel, spData);
                 if (handler->busLabel != 0)
                     m_display.markPending(handler->busLabel);
+                if (!handler->navTarget.empty())
+                    switchTo(handler->navTarget);
                 return true;
             }
 
@@ -110,11 +115,15 @@ public:
                 std::string cur = handler->currentValue();
                 if (!cur.empty())
                     scratchpad.setText(cur);
+                if (!handler->navTarget.empty())
+                    switchTo(handler->navTarget);
                 return true;
             }
 
             // No bus label but valuePtr set -> read-back only, discard scratchpad
             if (handler->busLabel == 0) {
+                if (!handler->navTarget.empty())
+                    switchTo(handler->navTarget);
                 return true;
             }
 
@@ -122,6 +131,8 @@ public:
             scratchpad.clear();
             m_bus.sendToFmgc(handler->busLabel, spData);
             m_display.markPending(handler->busLabel);
+            if (!handler->navTarget.empty())
+                switchTo(handler->navTarget);
             return true;
         }
 

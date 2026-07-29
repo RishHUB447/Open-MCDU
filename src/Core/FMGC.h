@@ -341,6 +341,10 @@ inline void FMGC::stop() {
 }
 
 inline void FMGC::run() {
+    // Send initial defaults on first tick
+    m_bus.sendToMcdu(ArincLabel::ACK_TROPO, "36090");
+    m_tropo = "36090";
+
     while (m_running) {
         processMessages();
         std::this_thread::sleep_for(std::chrono::milliseconds(50)); // 20 Hz

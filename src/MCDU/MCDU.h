@@ -11,6 +11,8 @@
 #include "../Pages/InitPage.h"
 #include "../Pages/FplnPage.h"
 #include "../Pages/MenuPage.h"
+#include "../Pages/DataPage.h"
+#include "../Pages/AcStatusPage.h"
 #include "../Core/FMGC.h"
 #include "../Core/DataBus.h"
 
@@ -57,6 +59,10 @@ public:
             std::make_unique<FplnPage>(fmgc.flightPlan(), fmgc.navDatabase(), bus));
         m_stateMachine.registerPage("MENU",
             std::make_unique<MenuPage>());
+        m_stateMachine.registerPage("DATA",
+            std::make_unique<DataPage>());
+        m_stateMachine.registerPage("AC_STATUS",
+            std::make_unique<AcStatusPage>());
         m_stateMachine.switchTo("INIT");
     }
 

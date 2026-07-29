@@ -128,6 +128,7 @@ struct ClickHandler {
     uint16_t     busLabel = 0;
     bool         isDirectAction = false;
     std::string* valuePtr = nullptr;
+    std::string  navTarget;   // non-empty -> page-state-machine switches to this page
 
     bool isEditable() const { return busLabel != 0 || isDirectAction || valuePtr != nullptr; }
     std::string currentValue() const { return valuePtr ? *valuePtr : ""; }

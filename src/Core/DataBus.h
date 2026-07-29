@@ -19,6 +19,7 @@ namespace ArincLabel {
     constexpr uint16_t TROPO         = 017;
     constexpr uint16_t ALTN_ROUTE    = 020;  // "ALTN/CO RTE" pair
     constexpr uint16_t ALIGN_IRS     = 026;  // direct action, no data
+    constexpr uint16_t WIND_TEMP     = 027;  // goes to WIND/TEMP page later
 
     // Flight plan edits
     constexpr uint16_t WAYPOINT_INSERT = 031;
