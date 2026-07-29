@@ -73,21 +73,31 @@ public:
         FieldRenderer::slash(buf, 2, 15, 4, 4,
             m_disp.fromAirport, m_disp.toAirport, CellColor::CYAN);
 
-        // L2 / R2 — ALTN/CO RTE (custom dashes with independent colors)
+        // L2 / R2 — ALTN/CO RTE (left only or left/right pair)
         FieldRenderer::text(buf, 3, 0, "ALTN/CO RTE", CellColor::WHITE, 14);
         {
-            CellColor lc = m_disp.altnCoRteLeft.empty() ? CellColor::WHITE : CellColor::CYAN;
-            CellColor rc = m_disp.altnCoRteRight.empty() ? CellColor::WHITE : CellColor::CYAN;
-            CellColor sc = (lc == CellColor::CYAN || rc == CellColor::CYAN) ? CellColor::CYAN : CellColor::WHITE;
-            if (m_disp.altnCoRteLeft.empty())
-                FieldRenderer::dashLine(buf, 4, 0, 4, lc);
-            else
-                FieldRenderer::text(buf, 4, 0, padRight(m_disp.altnCoRteLeft, 4), lc);
-            FieldRenderer::character(buf, 4, 4, '/', sc);
-            if (m_disp.altnCoRteRight.empty())
-                FieldRenderer::dashLine(buf, 4, 5, 10, rc);
-            else
-                FieldRenderer::text(buf, 4, 5, padRight(m_disp.altnCoRteRight, 10), rc);
+            bool leftEmpty = m_disp.altnCoRteLeft.empty();
+            bool rightEmpty = m_disp.altnCoRteRight.empty();
+
+            // If only left side is filled (e.g. "NONE"), show it without slash/right
+            if (!rightEmpty || leftEmpty) {
+                CellColor lc = leftEmpty ? CellColor::WHITE : CellColor::CYAN;
+                CellColor rc = rightEmpty ? CellColor::WHITE : CellColor::CYAN;
+                CellColor sc = (lc == CellColor::CYAN || rc == CellColor::CYAN) ? CellColor::CYAN : CellColor::WHITE;
+                if (leftEmpty)
+                    FieldRenderer::dashLine(buf, 4, 0, 4, lc);
+                else
+                    FieldRenderer::text(buf, 4, 0, padRight(m_disp.altnCoRteLeft, 4), lc);
+                FieldRenderer::character(buf, 4, 4, '/', sc);
+                if (rightEmpty)
+                    FieldRenderer::dashLine(buf, 4, 5, 10, rc);
+                else
+                    FieldRenderer::text(buf, 4, 5, padRight(m_disp.altnCoRteRight, 10), rc);
+            } else {
+                // Only left side, no right — show just the left value
+                FieldRenderer::text(buf, 4, 0, padRight(m_disp.altnCoRteLeft, 4),
+                    CellColor::CYAN);
+            }
         }
 
         // L3 / R3
@@ -99,30 +109,49 @@ public:
         FieldRenderer::text(buf, 8, 14, "WIND/TEMP>", CellColor::WHITE);
 
         // L5 / R5
-        FieldRenderer::text(buf, 9, 0,  "COST INDEX", CellColor::WHITE, 14);
-        FieldRenderer::text(buf, 9, 19, "TROPO",      CellColor::WHITE, 14);
-        FieldRenderer::box(buf, 10, 0,  3, m_disp.costIndex, CellColor::CYAN);
-        FieldRenderer::box(buf, 10, 19, 5, m_disp.tropo, CellColor::CYAN,
-            CellColor::CYAN, Align::RIGHT);
+        {
+            bool hasRoute = !m_disp.fromAirport.empty() || !m_disp.toAirport.empty();
+            FieldRenderer::text(buf, 9, 0,  "COST INDEX", CellColor::WHITE, 14);
+            FieldRenderer::text(buf, 9, 19, "TROPO",      CellColor::WHITE, 14);
+            // COST INDEX: WHITE dashes before FROM/TO, AMBER boxes after, CYAN when filled
+            if (hasRoute || !m_disp.costIndex.empty())
+                FieldRenderer::box(buf, 10, 0, 3, m_disp.costIndex, CellColor::CYAN);
+            else
+                FieldRenderer::text(buf, 10, 0, "---", CellColor::WHITE);
+            FieldRenderer::box(buf, 10, 19, 5, m_disp.tropo, CellColor::CYAN,
+                CellColor::CYAN, Align::RIGHT);
+        }
 
         // L6 / R6
         FieldRenderer::text(buf, 11, 0,  "CRZ FL/TEMP", CellColor::WHITE, 14);
         FieldRenderer::text(buf, 11, 16, "GND TEMP",    CellColor::WHITE, 14);
 
-        // CRZ FL/TEMP — computed, shows ---- while FMGC calculates
+        // CRZ FL/TEMP: WHITE dashes before FROM/TO, AMBER boxes after, CYAN when filled
         {
-            CellColor cc = m_disp.crzFlTempPending ? CellColor::AMBER :
-                (m_disp.crzFlTemp.empty() ? CellColor::AMBER : CellColor::CYAN);
-            std::string crz = m_disp.crzFlTempPending ? "----/----" :
-                (m_disp.crzFlTemp.empty() ? "-----/---" : m_disp.crzFlTemp);
-            FieldRenderer::text(buf, 12, 0, crz + DEG, cc);
+            bool hasRoute = !m_disp.fromAirport.empty() || !m_disp.toAirport.empty();
+            if (m_disp.crzFlTempPending) {
+                FieldRenderer::text(buf, 12, 0, "---- /----°", CellColor::AMBER);
+            } else if (hasRoute && m_disp.crzFlTemp.empty()) {
+                // AMBER boxes
+                FieldRenderer::box(buf, 12, 0, 5, "", CellColor::CYAN, CellColor::AMBER);
+                FieldRenderer::character(buf, 12, 6, '/', CellColor::AMBER);
+                FieldRenderer::box(buf, 12, 7, 3, "", CellColor::CYAN, CellColor::AMBER);
+                FieldRenderer::text(buf, 12, 10, "°", CellColor::AMBER);
+            } else if (m_disp.crzFlTemp.empty()) {
+                // WHITE dashes before FROM/TO
+                FieldRenderer::text(buf, 12, 0,
+                    std::string("----- /---°"), CellColor::WHITE);
+            } else {
+                // CYAN filled data
+                FieldRenderer::text(buf, 12, 0, m_disp.crzFlTemp + DEG, CellColor::CYAN);
+            }
         }
 
         // GND TEMP — simple transfer
         {
             CellColor gc = m_disp.gndTemp.empty() ? CellColor::WHITE : CellColor::CYAN;
-            std::string gnd = m_disp.gndTemp.empty() ? "---" : m_disp.gndTemp;
-            FieldRenderer::text(buf, 12, 20, padLeft(gnd + DEG, 4), gc, 14);
+            std::string gnd = m_disp.gndTemp.empty() ? "---°" : m_disp.gndTemp + "°";
+            FieldRenderer::text(buf, 12, 19, gnd, gc, 14);
         }
     }
 

@@ -34,13 +34,15 @@ public:
     Page* currentPage() { return m_current; }
     const Page* currentPage() const { return m_current; }
 
-    void prevPage() {
-        if (m_current && m_current->onScroll(-1)) return;
+    // delta = +1 (SCROLL_UP), delta = -1 (SCROLL_DOWN)
+    // The page's onScroll() can invert this if needed
+    void scrollUp() {
+        if (m_current && m_current->onScroll(1)) return;
         m_subPageIndex = std::max(0, m_subPageIndex - 1);
     }
 
-    void nextPage() {
-        if (m_current && m_current->onScroll(1)) return;
+    void scrollDown() {
+        if (m_current && m_current->onScroll(-1)) return;
         m_subPageIndex++;
     }
 
@@ -65,8 +67,8 @@ public:
             case MCDUButton::AIRPORT:   switchTo("AIRPORT"); return true;
             case MCDUButton::SCROLL_LEFT:
             case MCDUButton::SCROLL_RIGHT: return true;
-            case MCDUButton::SCROLL_UP:    nextPage();      return true;
-            case MCDUButton::SCROLL_DOWN:  prevPage();      return true;
+            case MCDUButton::SCROLL_UP:    scrollUp();      return true;
+            case MCDUButton::SCROLL_DOWN:  scrollDown();    return true;
             default: break;
         }
 

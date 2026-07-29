@@ -39,17 +39,11 @@ public:
 
         if (total == 0 || lskIdx > 4) return nullptr;
 
-        // Calculate which plan item is at this slot
-        size_t planIdx;
-        if (total < 5) {
-            int i = static_cast<int>(lskIdx) - static_cast<int>(m_scrollOffset);
-            i %= 5;
-            if (i < 0) i += 5;
-            if (static_cast<size_t>(i) >= total) return nullptr;
-            planIdx = static_cast<size_t>(i);
-        } else {
-            planIdx = (m_scrollOffset + lskIdx) % total;
-        }
+        // Unified: scrollOffset = which plan item is at slot 0
+        size_t planIdx = m_scrollOffset + lskIdx;
+        if (total >= 5)
+            planIdx %= total;
+        if (planIdx >= total) return nullptr;
 
         const FlightWaypoint* wpt = editing
             ? walkList(m_plan.editFirst(), planIdx)
@@ -60,6 +54,10 @@ public:
         // Discontinuity: insert handler (LSK only, not RSK)
         if (wpt->isDiscontinuity)
             return (side == 0) ? &m_discoHandler : nullptr;
+
+        // First waypoint (departure) -> open LAT REV page
+        if (planIdx == 0)
+            return &m_latRevHandler;
 
         // Normal waypoint: read-back only (no bus label)
         return prepareWaypointHandler(lskIdx, wpt->id);
@@ -75,22 +73,21 @@ public:
         size_t total = editing ? m_plan.editSize() : m_plan.size();
         if (total == 0) return;
 
-        // Row 1: headers
-        FieldRenderer::text(buf, 1, 1,  "FROM",    CellColor::WHITE, 14);
+        // Row 1: headers — FROM only when departure airport is at LSK1 (slot 0)
+        if (m_scrollOffset == 0)
+            FieldRenderer::text(buf, 1, 1,  "FROM",    CellColor::WHITE, 14);
         FieldRenderer::text(buf, 1, 9,  "TIME",    CellColor::WHITE, 14);
         FieldRenderer::text(buf, 1, 15, "SPD/ALT", CellColor::WHITE, 14);
 
-        // Render visible items at slots 0..4
-        if (total < 5) {
-            for (size_t i = 0; i < total; i++) {
-                int slot = static_cast<int>((m_scrollOffset + i) % 5);
-                renderWaypoint(buf, 2 + slot * 2, slot, i, editing);
-            }
-        } else {
-            for (int slot = 0; slot < 5; slot++) {
-                size_t idx = (m_scrollOffset + slot) % total;
+        // Unified scroll: scrollOffset = which plan item is at slot 0
+        // For total >= 5: circular modulo (wraps around)
+        // For total < 5: linear (items shift within viewport, no wrap)
+        for (int slot = 0; slot < 5; slot++) {
+            size_t idx = m_scrollOffset + slot;
+            if (total >= 5)
+                idx %= total;
+            if (idx < total)
                 renderWaypoint(buf, 2 + slot * 2, slot, idx, editing);
-            }
         }
 
         // Rows 11-12: DEST or TMPY/ERASE/INSERT
@@ -119,11 +116,12 @@ public:
     bool onScroll(int delta) override {
         size_t total = m_plan.isEditing() ? m_plan.editSize() : m_plan.size();
         if (total == 0) return false;
-        size_t modBase = (total < 5) ? 5 : total;
-        // Negate delta: UP arrow (-delta) shows earlier items, DOWN (+delta) shows later
+        // delta=+1 (UP), delta=-1 (DOWN)
+        // -delta: UP -> offset-1 (earlier items), DOWN -> offset+1 (later items)
         int offset = static_cast<int>(m_scrollOffset) - delta;
-        offset %= static_cast<int>(modBase);
-        if (offset < 0) offset += static_cast<int>(modBase);
+        int modBase = static_cast<int>(total);
+        offset %= modBase;
+        if (offset < 0) offset += modBase;
         m_scrollOffset = static_cast<size_t>(offset);
         return true;
     }
@@ -135,6 +133,7 @@ private:
     size_t           m_scrollOffset = 0;
 
     ClickHandler  m_discoHandler;
+    ClickHandler  m_latRevHandler{0, false, nullptr, "LAT_REV"};
     ClickHandler  m_eraseHandler;
     ClickHandler  m_insertHandler;
     std::string   m_wptNames[5];
@@ -149,10 +148,18 @@ private:
     }
 
     const FlightWaypoint* findDestination() const {
-        for (auto* cur = m_plan.last(); cur; cur = cur->prev)
-            if (!cur->isEndOfPlan && !cur->isDiscontinuity) return cur;
+        // Find first valid waypoint (departure)
+        const FlightWaypoint* first = nullptr;
         for (auto* cur = m_plan.first(); cur; cur = cur->next)
-            if (!cur->isEndOfPlan && !cur->isDiscontinuity) return cur;
+            if (!cur->isEndOfPlan && !cur->isDiscontinuity) { first = cur; break; }
+        if (!first) return nullptr;
+
+        // Find last valid waypoint going backwards
+        for (auto* cur = m_plan.last(); cur; cur = cur->prev)
+            if (!cur->isEndOfPlan && !cur->isDiscontinuity) {
+                // If same as departure, there's no real destination
+                return (cur == first) ? nullptr : cur;
+            }
         return nullptr;
     }
 

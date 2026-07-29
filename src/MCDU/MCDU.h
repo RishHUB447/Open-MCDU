@@ -13,6 +13,7 @@
 #include "../Pages/MenuPage.h"
 #include "../Pages/DataPage.h"
 #include "../Pages/AcStatusPage.h"
+#include "../Pages/LatRevPage.h"
 #include "../Core/FMGC.h"
 #include "../Core/DataBus.h"
 
@@ -63,6 +64,8 @@ public:
             std::make_unique<DataPage>());
         m_stateMachine.registerPage("AC_STATUS",
             std::make_unique<AcStatusPage>());
+        m_stateMachine.registerPage("LAT_REV",
+            std::make_unique<LatRevPage>(fmgc.flightPlan()));
         m_stateMachine.switchTo("INIT");
     }
 

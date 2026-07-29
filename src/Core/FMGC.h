@@ -342,8 +342,11 @@ inline void FMGC::stop() {
 
 inline void FMGC::run() {
     // Send initial defaults on first tick
-    m_bus.sendToMcdu(ArincLabel::ACK_TROPO, "36090");
     m_tropo = "36090";
+    m_gndTemp = "25";
+    m_bus.sendToMcdu(ArincLabel::ACK_TROPO, m_tropo);
+    m_bus.sendToMcdu(ArincLabel::GND_TEMP, m_gndTemp);
+   
 
     while (m_running) {
         processMessages();
