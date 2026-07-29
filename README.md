@@ -1,10 +1,7 @@
 # OPEN MCDU
 
-An open-source A320 MCDU (Multifunction Control and Display Unit) simulator. Built in C++20.
-
-The MCDU follows the ARINC 739 14x24 character grid standard used in real Airbus aircraft.
-It is fully rendering-agnostic and input-source-agnostic -- use it with GLFW, X-Plane, a web
-viewer, custom cockpit hardware, or anything else.
+Open-source A320 MCDU (Multifunction Control and Display Unit) simulator in C++20.
+Follows the ARINC 739 14x24 character grid standard used in real Airbus aircraft.
 
 <div align="center">
   <img src="Gallery/4.png" width="400">
@@ -13,348 +10,242 @@ viewer, custom cockpit hardware, or anything else.
   <img src="Gallery/1.png" width="400">
 </div>
 
-## Features
+---
 
-- ARINC-compliant 14x24 character LCD grid with per-cell color and font size
-- Real bezel button layout with pixel-accurate hit detection (measured from reference image)
-- LSK/RSK side keys, function keys, action keys, and numeric keypad -- all via `MCDUButton` enum
-- Scratchpad input with CLR logic (clear char, CLR mode, message display)
-- **ARINC 429-style DataBus** between MCDU and FMGC (two unidirectional buses, thread-safe)
-- **FMGC runs on its own thread** at 20 Hz, processes messages asynchronously
-- **Pending state** on display fields -- shows "----" while waiting for FMGC response
-- Nav database parser for X-Plane .dat format (fixes, VORs, NDBs, airports)
-- FROM/TO validation against real nav database, auto-fills NONE on CO ROUTE and ALTN
-- CRZ FL/TEMP auto-format (FL300, ISA temperature interpolation)
-- F-PLN page with circular scrolling and EDIT mode (deep-copy, ERASE/INSERT, YELLOW coloring)
-- **No LSK slot arrays** -- pages just answer "what field is at this button?" through `getClickHandler()`
-- **Rendering and input are fully decoupled** -- swap GLFW, X-Plane, SDL2, or any backend without touching the MCDU library
+## Architecture
 
-## Architecture overview
+The MCDU core (`src/MCDU/`, `src/Core/`) has **zero** dependencies on any graphics or windowing library — just C++20 stdlib. It produces a `ScreenBuffer` (14x24 grid of `{codepoint, color, fontSize}`) that any renderer can turn into pixels.
 
 ```
-┌────────────────────────────────────────────────────────┐
-│                   Your application                      │
-│  (GLFW, X-Plane plugin, MSFS, hardware driver, etc.)   │
-│                                                         │
-│  Your 30-line adapter: platform events → MCDUButton     │
-│  Your renderer: ScreenBuffer → pixel buffer → texture   │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-                       ▼
-┌────────────────────────────────────────────────────────┐
-│                    MCDU library                         │
-│                                                         │
-│  MCDU::handleButton(MCDUButton)  ← input entry point   │
-│  MCDU::screen()  → ScreenBuffer  ← output (14x24 grid) │
-│  MCDU::rebuildScreen()           ← process bus + redraw │
-│                                                         │
-│  Communicates with FMGC through DataBus (ARINC 429)     │
-└──────────────────────┬──────────────────────────────────┘
-                       │  DataBus (thread-safe, mutex)
-                       ▼
-┌────────────────────────────────────────────────────────┐
-│                    FMGC (own thread, 20 Hz)              │
-│                                                         │
-│  Processes MCDU messages asynchronously                 │
-│  Owns NavDatabase, FlightPlan, all flight data          │
-│  Sends responses back through DataBus                   │
-└────────────────────────────────────────────────────────┘
+ ┌─────────────────────────────────────────────┐
+ │          Your application                    │
+ │                                              │
+ │  Event handler → mcdu.handleButton(btn)     │
+ │  Char input    → mcdu.inputChar(ch)         │
+ │                                              │
+ │  ┌───────────────────────────────────────┐  │
+ │  │  MCDU (pure logic)                    │  │
+ │  │  screen() → ScreenBuffer (14x24 grid) │  │
+ │  │  hitTestLsk(x,y) → MCDUButton         │  │
+ │  │  updateBus(now)  → tick DataBus       │  │
+ │  └─────────────────┬─────────────────────┘  │
+ │                    │                         │
+ │  ┌─────────────────▼─────────────────────┐  │
+ │  │  Your renderer                        │  │
+ │  │  Read ScreenBuffer → render to pixels  │  │
+ │  │  Upload as OpenGL texture / X-Plane    │  │
+ │  └───────────────────────────────────────┘  │
+ └─────────────────────────────────────────────┘
 ```
 
-### No shared memory
+The MCDU is a **passive object** — you call it, it doesn't call you. No callbacks to register.
 
-The MCDU and FMGC communicate exclusively through the DataBus -- no shared structs, no direct function
-calls. The MCDU maintains its own display state (McduDisplayState) that gets updated when the FMGC
-sends responses. This means:
+### Key components
 
-- MCDU and FMGC can run on separate threads (FMGC at 20 Hz, render at 60+ FPS)
-- Fields show "----" (amber) while waiting for FMGC to acknowledge
-- FMGC can reject data -- sends an error message that appears on the scratchpad
-- The bus simulates configurable latency (default 30 ms)
+| Component | Header | Role |
+|-----------|--------|------|
+| `MCDU` | `MCDU/MCDU.h` | Page routing, button dispatch, screen rebuild, scratchpad |
+| `FMGC` | `Core/FMGC.h` | Flight data, nav database, flight plan, runs on separate thread at 20 Hz |
+| `DataBus` | `Core/DataBus.h` | Two thread-safe unidirectional buses (MCDU→FMGC, FMGC→MCDU) with ARINC labels |
+| `ScreenBuffer` | `MCDU/ScreenBuffer.h` | 14×24 grid of per-cell `{codepoint, color, fontSize}` |
+| `FieldRenderer` | `MCDU/Field.h` | Stateless rendering helpers: `text()`, `box()`, `slash()`, `character()`, `dashLine()` |
+| `Page` | `MCDU/Field.h` | Base class — override `buildScreen()` and `getClickHandler()` |
 
-## Integration guide
+### DataBus (ARINC 429 simulation)
 
-The MCDU library is `src/MCDU/` and `src/Core/`. Include these headers in your project.
-You do NOT need SFML, GLFW, or any rendering library to use the MCDU logic.
+Two unidirectional, mutex-protected queues:
+- **Bus A** (MCDU → FMGC): transmit with ARINC label + payload + SSM
+- **Bus B** (FMGC → MCDU): receive responses
 
-### Step 1: Set up the components
+FMGC polls Bus A at 20 Hz, processes messages (validation, computation), and sends responses to Bus B with simulated latency. This produces the "---- pending" state on computed fields while waiting for FMGC response.
+
+The bus also serves as a record/replay point for data flow analysis in simulators.
+
+### Button wiring
+
+All bezel buttons are enumerated in `MCDUButton` (`MCDU/MCDUButton.h`). Your input adapter maps platform events to these enums:
+
+```cpp
+// GLFW adapter — ~30 lines
+void onKeyPress(GLFWwindow*, int key, int, int action, int) {
+    if (action != GLFW_PRESS) return;
+    switch (key) {
+        case GLFW_KEY_F1:  mcdu.handleButton(MCDUButton::DIR);   break;
+        case GLFW_KEY_F5:  mcdu.handleButton(MCDUButton::INIT);  break;
+        case GLFW_KEY_F6:  mcdu.handleButton(MCDUButton::FPLN);  break;
+        case GLFW_KEY_UP:  mcdu.handleButton(MCDUButton::SCROLL_UP);   break;
+        case GLFW_KEY_DOWN: mcdu.handleButton(MCDUButton::SCROLL_DOWN); break;
+        default: break;
+    }
+}
+
+// Hit-test mouse clicks against the bezel image
+void onMouseClick(GLFWwindow*, int btn, int action, int) {
+    if (btn == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        double x, y; glfwGetCursorPos(window, &x, &y);
+        MCDUButton hit = mcdu.hitTestLsk((float)x, (float)y);
+        if (hit != MCDU::NO_HIT) mcdu.handleButton(hit);
+    }
+}
+
+void onCharInput(GLFWwindow*, unsigned int codepoint) {
+    mcdu.inputChar((char)codepoint);
+}
+```
+
+### Screen output
+
+`ScreenBuffer` exposes each cell as:
+
+```
+struct Cell {
+    uint32_t ch;        // Unicode codepoint
+    CellColor color;    // GREEN, AMBER, WHITE, CYAN, YELLOW, DIM
+    uint8_t fontSize;   // 22 (data) or 14 (labels)
+};
+```
+
+Render with any backend — the demo app uses SFML but the core has no graphics dependency. Here's a minimal GLFW + stb\_truetype main loop:
 
 ```cpp
 #include "Core/DataBus.h"
 #include "Core/FMGC.h"
 #include "MCDU/MCDU.h"
 
-DataBus bus;          // ARINC 429-style message bus
-FMGC   fmgc(bus);     // Flight computer (call start() for its own thread)
-MCDU   mcdu(fmgc, bus);  // Display + input
+DataBus bus;
+FMGC   fmgc(bus);
+MCDU   mcdu(fmgc, bus);
 
-// Load nav data (X-Plane format)
 fmgc.loadXPlaneFix("ext_data/earth_fix.dat");
 fmgc.loadAirportsCSV("ext_data/airports.csv");
+fmgc.start();   // launch 20 Hz FMGC thread
 
-fmgc.start();  // launches 20 Hz FMGC thread
-mcdu.rebuildScreen();
-```
-
-### Step 2: Route input to the MCDU
-
-All input goes through `mcdu.handleButton(MCDUButton)`. Map your platform's events
-to the enum:
-
-```cpp
-// ─── GLFW application ───
-void onKeyPress(GLFWwindow*, int key, int, int, int) {
-    switch (key) {
-        case GLFW_KEY_F1:  mcdu.handleButton(MCDUButton::DIR);   break;
-        case GLFW_KEY_F2:  mcdu.handleButton(MCDUButton::PROG);  break;
-        case GLFW_KEY_F5:  mcdu.handleButton(MCDUButton::INIT);  break;
-        case GLFW_KEY_F6:  mcdu.handleButton(MCDUButton::FPLN);  break;
-        case GLFW_KEY_UP:  mcdu.handleButton(MCDUButton::SCROLL_UP);   break;
-        case GLFW_KEY_DOWN: mcdu.handleButton(MCDUButton::SCROLL_DOWN); break;
-    }
-}
-
-void onMouseClick(GLFWwindow*, int btn, int action, int) {
-    if (btn == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-        double x, y;
-        glfwGetCursorPos(window, &x, &y);
-        MCDUButton hit = mcdu.hitTestLsk((float)x, (float)y);
-        if (hit != MCDU::NO_HIT) mcdu.handleButton(hit);
-    }
-}
-
-// ─── Keyboard scratchpad input ───
-void onCharInput(GLFWwindow*, unsigned int codepoint) {
-    mcdu.inputChar((char)codepoint);
-}
-
-// ─── Simulation / script API ───
-void onScriptCommand(const std::string& cmd) {
-    static const std::map<std::string, MCDUButton> mapping = {
-        {"L1", MCDUButton::L1}, {"L2", MCDUButton::L2},
-        {"R1", MCDUButton::R1}, {"R2", MCDUButton::R2},
-        {"DIR", MCDUButton::DIR}, {"INIT", MCDUButton::INIT},
-        // ... map your command strings to the enum
-    };
-    auto it = mapping.find(cmd);
-    if (it != mapping.end()) mcdu.handleButton(it->second);
-}
-```
-
-The `MCDUButton` enum covers all 40+ buttons. See `MCDU/MCDUButton.h` for the full list.
-
-### Step 3: Read the screen
-
-Each frame, call `rebuildScreen()` (ticks the bus, polls for FMGC responses, redraws)
-and read the pixel buffer from your renderer of choice.
-
-```cpp
-// Your event loop
+// In your render loop:
 while (running) {
-    pollYourPlatformEvents();  // GLFW, X-Plane, etc.
+    pollInput();                        // glfwPollEvents(), etc.
+    mcdu.updateBus(now);                // tick bus timers
 
-    uint64_t now = getTimestampMs();
-    mcdu.updateBus(now);
-    mcdu.rebuildScreen();
+    mcdu.rebuildScreen();               // poll FMGC, redraw
 
-    // Get the character grid
     const ScreenBuffer& buf = mcdu.screen();
-
-    // Render to pixels (stb_truetype, Cairo, or your own)
-    // YourRenderer::render(buf) → pixel buffer
-    // Upload pixel buffer as a texture (OpenGL, X-Plane, etc.)
+    // Read buf.at(row, col) → render characters
+    // Any backend: stb_truetype, Cairo, raw glyph atlas, SFML, etc.
 }
 ```
 
-The ScreenBuffer is a 14x24 grid. Each cell contains:
-- Unicode codepoint (uint32_t)
-- Color (CellColor enum: GREEN, AMBER, WHITE, CYAN, YELLOW, DIM)
-- Font size (22 = data, 14 = labels)
+---
 
-A minimal pixel renderer can be built with `stb_truetype.h` (single-header, no dependencies):
+## Display colors
 
-```cpp
-#define STB_TRUETYPE_IMPLEMENTATION
-#include "stb_truetype.h"
+| Color  | Use                                   |
+|--------|---------------------------------------|
+| GREEN  | Data, placeholder dashes              |
+| AMBER  | Warnings, empty fields, pending state |
+| WHITE  | Labels, normal text                   |
+| CYAN   | Filled data fields                    |
+| YELLOW | EDIT mode (temp flight plan)          |
+| DIM    | Separators                            |
 
-stbtt_fontinfo font;
-unsigned char* ttf = readFile("B612-Regular.ttf");
-stbtt_InitFont(&font, ttf, 0);
-
-// For each cell in ScreenBuffer:
-float scale = stbtt_ScaleForPixelHeight(&font, buf.fontSizeAt(r,c));
-int w, h, xoff, yoff;
-unsigned char* glyph = stbtt_GetCodepointBitmap(&font, scale, scale,
-    buf.at(r,c), &w, &h, &xoff, &yoff);
-// Blit glyph onto your pixel buffer at the right LCD position
-stbtt_FreeBitmap(glyph, 0);
-```
-
-## How buttons work
-
-Press a bezel button. MCDU routes it to PageStateMachine. PageStateMachine asks the
-current page: what field is at (side, index)? The page returns a ClickHandler with
-an ARINC label and a data pointer.
-
-**No slot arrays. No per-frame zeroing. No function pointers.** Pages override a single
-virtual method:
-
-```cpp
-const ClickHandler* getClickHandler(int side, int lskIdx) override;
-```
-
-Side is 0 for left (LSK1-6) or 1 for right (RSK1-6). lskIdx is 0-5. Return nullptr
-for nothing there.
-
-The ClickHandler tells the PageStateMachine:
-- `busLabel`: which ARINC label to send (0 = read-back only, no bus message)
-- `isDirectAction`: fire without consuming scratchpad (for ERASE, INSERT, etc.)
-- `valuePtr`: pointer to the current value for scratchpad read-back
-
-### Display colors
-
-| Color  | Use                                    |
-|--------|----------------------------------------|
-| GREEN  | Data, placeholder dashes               |
-| AMBER  | Warnings, empty fields, pending state  |
-| WHITE  | Labels, normal text                    |
-| CYAN   | Filled data fields                     |
-| YELLOW | EDIT mode (temp flight plan)           |
-| DIM    | Separators                             |
-
-### How the grid maps to buttons
-
-Each LSK/RSK button sits next to a data row on the screen. The mapping is:
-
-- LSK1 / RSK1 -> row 2 (data)
-- LSK2 / RSK2 -> row 4
-- LSK3 / RSK3 -> row 6
-- LSK4 / RSK4 -> row 8
-- LSK5 / RSK5 -> row 10
-- LSK6 / RSK6 -> row 12
-
-Rows between data rows (3,5,7,9,11) carry labels and small text. Row 0 is the
-title row. Row 13 is the scratchpad line.
-
-## DataBus (ARINC 429 simulation)
-
-The DataBus models two unidirectional ARINC 429 buses:
-
-- **Bus A (MCDU -> FMGC)**: MCDU transmits, FMGC receives
-- **Bus B (FMGC -> MCDU)**: FMGC transmits, MCDU receives
-
-Messages are labelled with octal ARINC labels (defined in `ArincLabel` namespace).
-Each message carries a payload string and an SSM (Sign/Status Matrix) indicating
-data validity.
-
-The bus is thread-safe (mutex-protected queues). The FMGC thread polls Bus A at
-20 Hz, processes messages, and sends responses to Bus B. The MCDU polls Bus B
-each frame and updates its display state.
-
-Conveniently, it also acts as a "source of truth" in simulator and debugging context; you can record, and analyze data flow.
-
-## Flight plan data model
-
-The flight plan is a doubly-linked list of FlightWaypoint nodes. Marker nodes
-handle DISCONTINUITY and END OF F-PLN display.
-
-EDIT mode works in three steps:
-1. beginEdit() -- deep-copies the active plan
-2. User edits the copy (insert waypoints, remove discontinuity)
-3. commitEdit() -- swaps edit into active, or cancelEdit() -- discards edit
-
-The F-PLN page uses this for waypoint insertion. When you add a waypoint at the
-discontinuity, the page enters edit mode, rendering switches to yellow, and
-LSK6/RSK6 show <-ERASE and INSERT*.
-
-Scrolling is circular. The viewport always shows 5 items.
-
-## Nav database
-
-The NavDatabase class loads waypoints from X-Plane 12 format files and airports
-from OurAirports CSV. Loading is thread-safe (mutex-protected merge into main map).
-
-| File             | Contents                       |
-|------------------|--------------------------------|
-| earth_fix.dat    | Waypoints (lat, lon, ID)       |
-| earth_nav.dat    | VORs and NDBs                  |
-| airports.csv     | ICAO airport codes             |
-
-These files are not in the repo. Copy them from your X-Plane 12 installation
-(Resources/default data/) or download airports.csv from OurAirports.
-
-## Making a new page
-
-1. Create a header in src/Pages/
-2. Extend the Page class (defined in MCDU/Field.h)
-3. Implement buildScreen() to render your layout
-4. Implement getClickHandler() to bind buttons using bus labels
-
-```cpp
-class MyPage : public Page {
-public:
-    MyPage(McduDisplayState& display) : m_disp(display) {
-        m_chMyField = {ArincLabel::CO_ROUTE, false, &m_disp.coRoute};
-    }
-
-    const ClickHandler* getClickHandler(int side, int lskIdx) override {
-        if (side == 0 && lskIdx == 0) return &m_chMyField;
-        return nullptr;
-    }
-
-    void buildScreen(ScreenBuffer& buf) override {
-        buf.setString(0, 0, "MY PAGE", CellColor::WHITE);
-        if (m_disp.coRoutePending)
-            buf.setString(2, 0, std::string(10, '-'), CellColor::AMBER);
-        else
-            FieldRenderer::render(buf, Field::BOX, 2, 0, 10, 0,
-                                  m_disp.coRoute, CellColor::CYAN);
-    }
-
-private:
-    McduDisplayState& m_disp;
-    ClickHandler m_chMyField;
-};
-```
-
-Then register in MCDU constructor:
-```cpp
-m_stateMachine.registerPage("MY",
-    std::make_unique<MyPage>(m_display));
-```
-
-The ClickHandler struct has three fields:
-- `busLabel`: which ARINC label to send on the DataBus (0 = no bus action)
-- `isDirectAction`: fire bus message without consuming scratchpad
-- `valuePtr`: pointer to the current value for scratchpad read-back
+---
 
 ## Building
 
-Requirements:
-- CMake 3.20+
-- C++20 compiler
-- SFML 3 (for the demo app, install via vcpkg)
-
 ```bash
 cmake -B build -S . \
-  -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake \
-  -G "Visual Studio 17 2022" -T host=x64 -A x64
+  -DCMAKE_TOOLCHAIN_FILE=/path/to/vcpkg/scripts/buildsystems/vcpkg.cmake
 cmake --build build --config Debug
 ```
 
-The CMakeLists.txt uses GLOB_RECURSE so new files in src/ are picked up
-automatically. SFML DLLs are copied to the output directory on Windows.
+Requires: C++20 compiler, CMake 3.20+, vcpkg (installs SFML for the demo app).
 
-The demo app uses SFML 3 for windowing and rendering. For production integration,
-replace with GLFW, SDL2, or your platform's native API (see Integration Guide above).
+---
+
+## Asset requirements
+
+| Asset | Source |
+|-------|--------|
+| `assets/MCDU.png` | Bezel image (included) |
+| `assets/B612-Regular.ttf` | Modified B612 font with U+25AF box marker (included) |
+| `ext_data/earth_fix.dat` | X-Plane 12 `Resources/default data/` |
+| `ext_data/earth_nav.dat` | X-Plane 12 `Resources/default data/` |
+| `ext_data/airports.csv` | [OurAirports](https://davidmegginson.github.io/ourairports-data/) |
+
+X-Plane nav data is **not** included in this repo. Copy from your X-Plane installation.
+The app compiles and runs without nav data (validation will fail on unknown airports).
+
+---
+
+## Making a new page
+
+1. Create a header in `src/Pages/` extending `Page` (defined in `MCDU/Field.h`)
+2. Implement `buildScreen(buf)` — render layout using `FieldRenderer::text()`, `box()`, `slash()`, etc.
+3. Implement `getClickHandler(side, lskIdx)` — return `ClickHandler` with `busLabel`, `valuePtr`, or `navTarget`
+4. Register in `MCDU.h`: `m_stateMachine.registerPage("NAME", std::make_unique<MyPage>())`
+
+The `ClickHandler` struct tells the state machine what to do when a bezel button is pressed:
+
+| Field | Purpose |
+|-------|---------|
+| `busLabel` | ARINC label to send on DataBus (0 = no-op) |
+| `isDirectAction` | Fire without consuming scratchpad |
+| `valuePtr` | Scratchpad read-back target |
+| `navTarget` | Page to switch to (e.g. `"AC_STATUS"`) |
+
+No slot arrays, no callbacks — just one override per page.
+
+### FieldRenderer API
+
+| Function | Purpose |
+|----------|---------|
+| `text(buf, row, col, str, color, fontSize=22)` | Plain text with explicit size |
+| `box(buf, row, col, w, content, fillColor, emptyColor, align)` | Empty = ▯▯▯ / filled = content |
+| `slash(buf, row, col, lw, rw, left, right, color)` | `left-box / right-box` |
+| `character(buf, row, col, codepoint, color, size)` | Single Unicode codepoint |
+| `separator(buf, row, col, w)` | Row of dim dashes |
+| `dashLine(buf, row, col, w, color, size)` | Dashes with custom color |
+
+All font sizes are explicit `uint8_t` (14 = labels, 22 = data text).
+
+### Grid layout
+
+| Row | Purpose |
+|-----|---------|
+| 0 | Title |
+| 1 | LSK1/RSK1 label |
+| 2 | LSK1/RSK1 data |
+| 3–12 | Pairs for LSK2–LSK6 |
+| 13 | Scratchpad |
+
+Left content starts at col 0. Right content placed per page.
+
+---
+
+## Flight plan data model
+
+Doubly-linked list of `FlightWaypoint` nodes with marker nodes for DISCONTINUITY and END OF F-PLN. EDIT mode deep-copies the plan — user edits the copy (yellow), then commits or erases.
+
+Scrolling is circular — the viewport always shows 5 items and wraps around regardless of plan size.
+
+---
+
+## Nav database
+
+`NavDatabase` loads from X-Plane 12 `.dat` format (fixes, VORs, NDBs) and OurAirports CSV. Thread-safe (mutex-protected merge).
+
+- `earth_fix.dat` — waypoints (lat, lon, ID)
+- `earth_nav.dat` — VORs, NDBs
+- `airports.csv` — ICAO codes
+
+---
 
 ## Asset credits
 
 - MCDU bezel image: original artwork
-- B612 font: PolarSys / Airbus, SIL Open Font License. Modified to add U+25AF box marker character.
-- Nav database files: Laminar Research. Licensed for use with X-Plane. Not included in this repo.
-- Airports CSV: OurAirports by David Megginson, public domain.
+- B612 font: PolarSys / Airbus, SIL Open Font License. Modified to add U+25AF box marker.
+- Nav database files: Laminar Research. Licensed for use with X-Plane. Not included.
+- Airports CSV: OurAirports / David Megginson, public domain.
+- CIFP data: FAA, public domain (ILS/LOC procedures)
 
 ## License
 
-MIT License. See LICENSE.
+MIT. See LICENSE.
