@@ -10,9 +10,11 @@
 #include "McduDisplayState.h"
 #include "../Core/DataBus.h"
 
-// Page management + button routing via DataBus.
-// When an LSK/RSK is pressed, looks up the ClickHandler for that position,
-// sends the scratchpad data as a bus message, and marks the field as pending.
+/*
+   Page management + button routing via DataBus.
+   LSK/RSK clicks look up the ClickHandler, send scratchpad as typed bus message,
+   mark the field as pending. PollEvents() picks up FMGC responses.
+*/
 class PageStateMachine {
 public:
     PageStateMachine(DataBus& bus, McduDisplayState& display)
@@ -34,8 +36,6 @@ public:
     Page* currentPage() { return m_current; }
     const Page* currentPage() const { return m_current; }
 
-    // delta = +1 (SCROLL_UP), delta = -1 (SCROLL_DOWN)
-    // The page's onScroll() can invert this if needed
     void scrollUp() {
         if (m_current && m_current->onScroll(1)) return;
         m_subPageIndex = std::max(0, m_subPageIndex - 1);
@@ -46,12 +46,9 @@ public:
         m_subPageIndex++;
     }
 
-    // Returns the error message string if one was generated, empty otherwise.
-    // The caller (MCDU) should show it on the scratchpad.
     bool handleButton(MCDUButton btn, Scratchpad& scratchpad, std::string& outMessage) {
         outMessage.clear();
 
-        // Hard function keys -> page switch
         switch (btn) {
             case MCDUButton::FPLN:      switchTo("FPLN");  return true;
             case MCDUButton::DIR:       switchTo("DIR");   return true;
@@ -74,7 +71,6 @@ public:
 
         if (!m_current) return false;
 
-        // Map button to side/idx
         int side = -1, idx = -1;
         switch (btn) {
             case MCDUButton::L1: side = 0; idx = 0; break;
@@ -102,9 +98,9 @@ public:
 
             std::string spData = scratchpad.text();
 
-            // Direct action: fire bus message, don't consume scratchpad
+            // Direct action: fire bus message
             if (handler->isDirectAction) {
-                m_bus.sendToFmgc(handler->busLabel, spData);
+                m_bus.sendToFmgc(handler->busLabel, BusPayload(spData));
                 if (handler->busLabel != 0)
                     m_display.markPending(handler->busLabel);
                 if (!handler->navTarget.empty())
@@ -122,16 +118,16 @@ public:
                 return true;
             }
 
-            // No bus label but valuePtr set -> read-back only, discard scratchpad
+            // No bus label -> read-back only, discard scratchpad
             if (handler->busLabel == 0) {
                 if (!handler->navTarget.empty())
                     switchTo(handler->navTarget);
                 return true;
             }
 
-            // Scratchpad has data -> send to FMGC, clear pad, mark pending
+            // Has data -> send as typed message, clear pad, mark pending
             scratchpad.clear();
-            m_bus.sendToFmgc(handler->busLabel, spData);
+            m_bus.sendToFmgc(handler->busLabel, BusPayload(spData));
             m_display.markPending(handler->busLabel);
             if (!handler->navTarget.empty())
                 switchTo(handler->navTarget);
@@ -141,22 +137,23 @@ public:
         return false;
     }
 
-    // Poll the FMGC->MCDU bus for responses and update display state.
-    // Returns an error message if FMGC sent one (caller shows on scratchpad).
+    // Poll FMGC->MCDU events and update display state.
+    // Returns error message if FMGC sent one (caller shows on scratchpad).
     std::string pollBusForUpdates() {
-        auto msgs = m_bus.pollMcduInbox();
+        auto events = m_bus.pollEvents();
         std::string errorMsg;
-        for (auto& msg : msgs) {
-            if (msg.label == ArincLabel::ERROR_MSG) {
-                errorMsg = msg.payload;
+        for (auto& ev : events) {
+            if (ev.label == ArincLabel::ERROR_MSG) {
+                if (ev.payload.type == BusValueType::STRING)
+                    errorMsg = ev.payload.strVal;
             } else {
-                m_display.applyUpdate(msg.label, msg.payload, msg.ssm);
+                m_display.applyUpdate(ev.label, ev.payload, ev.ssm);
             }
         }
         return errorMsg;
     }
 
-    // Get the Bus tick for latency simulation
+    // Tick the bus for latency simulation
     void tickBus(uint64_t nowMs) { m_bus.tick(nowMs); }
 
 private:

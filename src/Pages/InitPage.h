@@ -129,7 +129,7 @@ public:
         // CRZ FL/TEMP: WHITE dashes before FROM/TO, AMBER boxes after, CYAN when filled
         {
             bool hasRoute = !m_disp.fromAirport.empty() || !m_disp.toAirport.empty();
-            if (m_disp.crzFlTempPending) {
+            if (m_disp.isPending(ArincLabel::CRZ_FL_TEMP)) {
                 FieldRenderer::text(buf, 12, 0, "---- /----°", CellColor::AMBER);
             } else if (hasRoute && m_disp.crzFlTemp.empty()) {
                 // AMBER boxes

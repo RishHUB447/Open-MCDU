@@ -4,10 +4,11 @@ Open-source A320 MCDU (Multifunction Control and Display Unit) simulator in C++2
 Follows the ARINC 739 14x24 character grid standard used in real Airbus aircraft.
 
 <div align="center">
-  <img src="Gallery/4.png" width="400">
+  <img src="Gallery/4.png" width="320">
   <img src="Gallery/3.png" width="400">
   <img src="Gallery/2.png" width="400">
   <img src="Gallery/1.png" width="400">
+  <img src="Gallery/0.png" width="400">
 </div>
 
 ---

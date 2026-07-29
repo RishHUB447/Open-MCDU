@@ -57,7 +57,7 @@ public:
         m_stateMachine.registerPage("INIT",
             std::make_unique<InitPage>(m_display, fmgc.navDatabase(), bus));
         m_stateMachine.registerPage("FPLN",
-            std::make_unique<FplnPage>(fmgc.flightPlan(), fmgc.navDatabase(), bus));
+            std::make_unique<FplnPage>(m_display, bus));
         m_stateMachine.registerPage("MENU",
             std::make_unique<MenuPage>());
         m_stateMachine.registerPage("DATA",
@@ -65,8 +65,19 @@ public:
         m_stateMachine.registerPage("AC_STATUS",
             std::make_unique<AcStatusPage>());
         m_stateMachine.registerPage("LAT_REV",
-            std::make_unique<LatRevPage>(fmgc.flightPlan()));
+            std::make_unique<LatRevPage>(m_display));
         m_stateMachine.switchTo("INIT");
+
+        // Subscribe to FMGC response labels (event-driven — only changed labels are returned)
+        const uint16_t mcduSubs[] = {
+            ArincLabel::ACK_CO_ROUTE, ArincLabel::ACK_FROM_TO,
+            ArincLabel::ACK_FLT_NBR, ArincLabel::ACK_COST_INDEX,
+            ArincLabel::ACK_CRZ_FL_TEMP, ArincLabel::ACK_GND_TEMP,
+            ArincLabel::ACK_TROPO, ArincLabel::FPLN_STATE,
+            ArincLabel::ACK_ALTN_ROUTE, ArincLabel::ERROR_MSG
+        };
+        for (uint16_t lbl : mcduSubs)
+            bus.subscribe(lbl);
     }
 
     void handleButton(MCDUButton btn) {
